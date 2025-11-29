@@ -2,16 +2,10 @@ cat > vercel.json <<'JSON'
 {
   "version": 2,
   "builds": [
-    {
-      "src": "dist/**/*",
-      "use": "@vercel/static"
-    }
+    { "src": "dist/**/*", "use": "@vercel/static" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
-    }
+    { "src": "/(.*)", "dest": "/dist/$1" }
   ]
 }
 JSON
