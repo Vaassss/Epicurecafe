@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Phone, KeyRound, ArrowLeft } from 'lucide-react';
+import { api } from '../utils/api';
+import { toast } from 'sonner@2.0.3';
 
 // Logo - Try to import from figma, fallback to public folder for local development
 let logoImage: string;
@@ -26,43 +28,98 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isNewUser, setIsNewUser] = useState(false);
 
   const handleSendOtp = async () => {
     setError('');
     setLoading(true);
     
-    // For demo purposes, we'll simulate OTP sending
-    // In production, this would integrate with Supabase phone auth
-    setTimeout(() => {
+    if (!/^\d{10}$/.test(phoneNumber)) {
+      setError('Please enter a valid 10-digit phone number');
       setLoading(false);
-      setStep('otp');
-    }, 1000);
+      return;
+    }
+
+    // First check if customer exists
+    const checkResponse = await api.checkCustomer(phoneNumber);
+    if (checkResponse.error) {
+      console.warn('Could not check customer status, proceeding anyway');
+    } else {
+      setIsNewUser(checkResponse.isNewUser || false);
+    }
+
+    // Send OTP
+    const response = await api.sendOTP(phoneNumber);
+    setLoading(false);
+
+    if (response.error) {
+      setError(response.error);
+      return;
+    }
+
+    // For demo mode, show the OTP
+    if (response.otp) {
+      toast.success(`OTP sent! Demo OTP: ${response.otp}`, {
+        duration: 10000,
+      });
+    } else {
+      toast.success('OTP sent to your phone number');
+    }
+
+    setStep('otp');
   };
 
   const handleVerifyOtp = async () => {
     setError('');
     setLoading(true);
 
-    // Demo: Accept any 6-digit OTP
     if (otp.length !== 6) {
       setError('Please enter a 6-digit OTP');
       setLoading(false);
       return;
     }
 
-    // Check if user exists (demo: check localStorage)
-    const existingUser = localStorage.getItem(`user_${phoneNumber}`);
+    console.log('[Login] Verifying OTP for mobile:', phoneNumber);
     
-    setTimeout(() => {
-      if (existingUser) {
-        const userData = JSON.parse(existingUser);
-        onLoginSuccess(phoneNumber, userData.name);
-      } else {
-        // New user - go to registration
-        setStep('register');
-      }
+    // Try to verify OTP (works for both existing and new users)
+    const response = await api.verifyOTP(phoneNumber, otp);
+    
+    console.log('[Login] Verify OTP response:', response);
+    console.log('[Login] isNewUser flag:', (response as any).isNewUser);
+    
+    // Check if this is a new user who needs to provide name
+    // The server returns isNewUser flag along with the error
+    const isNewUserFlag = (response as any).isNewUser;
+    
+    if (isNewUserFlag) {
+      console.log('[Login] ✅ New user detected, transitioning to registration step');
       setLoading(false);
-    }, 1000);
+      setStep('register');
+      setError(''); // Clear any error
+      toast.info('Welcome! Please enter your name to complete registration', {
+        duration: 5000,
+      });
+      return;
+    }
+    
+    if (response.error) {
+      console.log('[Login] Error not related to new user:', response.error);
+      
+      // Other errors (wrong OTP, expired, etc.)
+      setError(response.error);
+      setLoading(false);
+      return;
+    }
+
+    if (response.customer) {
+      console.log('[Login] Successfully logged in customer:', response.customer.name);
+      toast.success(`Welcome back, ${response.customer.name}!`);
+      onLoginSuccess(response.customer.id, response.customer.name);
+    } else {
+      setError('Invalid response from server');
+    }
+    
+    setLoading(false);
   };
 
   const handleRegister = async () => {
@@ -75,21 +132,23 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
       return;
     }
 
-    // Demo: Save to localStorage
-    const userData = {
-      phone: phoneNumber,
-      name: name.trim(),
-      badges: [],
-      rewards: [],
-      createdAt: new Date().toISOString()
-    };
-
-    localStorage.setItem(`user_${phoneNumber}`, JSON.stringify(userData));
-
-    setTimeout(() => {
+    // Verify OTP with name for new user registration
+    const response = await api.verifyOTP(phoneNumber, otp, name.trim());
+    
+    if (response.error) {
+      setError(response.error);
       setLoading(false);
-      onLoginSuccess(phoneNumber, name.trim());
-    }, 1000);
+      return;
+    }
+
+    if (response.customer) {
+      toast.success(`Welcome to Epicure Cafe, ${response.customer.name}!`);
+      onLoginSuccess(response.customer.id, response.customer.name);
+    } else {
+      setError('Invalid response from server');
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -181,10 +240,11 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#a8c5a0]/60" />
                 <Input
                   type="tel"
-                  placeholder="+1 (555) 000-0000"
+                  placeholder="10-digit mobile number"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   className="pl-12 bg-[#1a2f2a]/50 border-[#a8c5a0]/30 text-[#d4e4d0] placeholder:text-[#a8c5a0]/40 focus:border-[#a8c5a0] h-14 text-lg"
+                  maxLength={10}
                 />
               </div>
               <Button
@@ -272,7 +332,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
           {/* Demo Note */}
           <div className="mt-6 p-4 bg-[#a8c5a0]/10 border border-[#a8c5a0]/20 rounded-xl">
             <p className="text-[#a8c5a0]/80 text-sm text-center">
-              <strong>Demo Mode:</strong> Use any phone number and enter any 6-digit code
+              <strong>Demo Mode:</strong> Enter a 10-digit number. OTP will be shown in notification.
             </p>
           </div>
         </div>

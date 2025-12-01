@@ -8,6 +8,7 @@ import { CustomerDashboard } from './components/CustomerDashboard';
 import { BaristaDashboard } from './components/BaristaDashboard';
 import { Toaster } from './components/ui/sonner';
 import { Users } from 'lucide-react';
+import { logHealthStatus } from './utils/healthCheck';
 
 type Page = 'landing' | 'login' | 'customer' | 'barista';
 
@@ -38,6 +39,8 @@ export default function App() {
 
   useEffect(() => {
     setShowHero(true);
+    // Check backend health on app startup
+    logHealthStatus();
   }, []);
 
   const handleLoginSuccess = (id: string, name: string) => {
@@ -293,7 +296,7 @@ export default function App() {
             {/* Map */}
             <div className="relative overflow-hidden rounded-2xl shadow-2xl border-2 border-[#a8c5a0]/30 h-[400px]">
               <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3929.2649937!2d76.28546!3d9.9706!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zOcKwNTgnMTQuMiJOIDc2wrAxNycwNy43IkU!5e0!3m2!1sen!2sin!4v1234567890"
+                src="https://www.google.com/maps/embed?pb=!1m14!1m8!1m3!1d15716.459595466536!2d76.2854625!3d9.9706175!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3b080d30a6d0e7c7%3A0x8e5c0d5c0e0e0e0e!2sEpicure%20Cafe!5e0!3m2!1sen!2sin!4v1732885200000!5m2!1sen!2sin"
                 width="100%"
                 height="100%"
                 style={{ border: 0 }}
@@ -323,7 +326,7 @@ export default function App() {
               </motion.div>
 
               <motion.a
-                href="https://maps.google.com/?q=9.970618,76.285462"
+                href="https://maps.app.goo.gl/8ZNcKLUhdsXvzuLr6"
                 target="_blank"
                 rel="noopener noreferrer"
                 initial={{ opacity: 0, x: 20 }}

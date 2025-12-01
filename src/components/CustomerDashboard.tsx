@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
-import { Award, Gift, Trophy, LogOut, Star, Coffee, ChevronRight, Menu, Home } from 'lucide-react';
+import { Award, Gift, Trophy, LogOut, Star, Coffee, ChevronRight, Menu, Home, Scan, History } from 'lucide-react';
 import { MenuSection } from './MenuSection';
+import { BillScanner } from './BillScanner';
+import { PurchaseHistory } from './PurchaseHistory';
+import { api } from '../utils/api';
+import { toast } from 'sonner@2.0.3';
 
 // Logo - Try to import from figma, fallback to public folder for local development
 let logoImage: string;
@@ -28,6 +32,14 @@ interface Roadmap {
   badge: string;
   reward: string;
   icon: any;
+}
+
+interface PurchaseRecord {
+  id: string;
+  items: string[];
+  timestamp: string;
+  source: 'scanner' | 'barista' | 'manual';
+  billId?: string;
 }
 
 const roadmaps: Roadmap[] = [
@@ -70,25 +82,56 @@ const roadmaps: Roadmap[] = [
 ];
 
 export function CustomerDashboard({ userId, userName, onLogout }: CustomerDashboardProps) {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'menu'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'menu' | 'scanner' | 'history'>('dashboard');
   const [userProgress, setUserProgress] = useState<{ [key: string]: string[] }>({});
   const [earnedBadges, setEarnedBadges] = useState<string[]>([]);
   const [availableRewards, setAvailableRewards] = useState<string[]>([]);
+  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRecord[]>([]);
+  const [showScanner, setShowScanner] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    // Load user progress from localStorage
-    const progressKey = `progress_${userId}`;
-    const badgesKey = `badges_${userId}`;
-    const rewardsKey = `rewards_${userId}`;
-
-    const savedProgress = localStorage.getItem(progressKey);
-    const savedBadges = localStorage.getItem(badgesKey);
-    const savedRewards = localStorage.getItem(rewardsKey);
-
-    if (savedProgress) setUserProgress(JSON.parse(savedProgress));
-    if (savedBadges) setEarnedBadges(JSON.parse(savedBadges));
-    if (savedRewards) setAvailableRewards(JSON.parse(savedRewards));
+    // Load customer data from backend
+    loadCustomerData();
   }, [userId]);
+
+  const loadCustomerData = async () => {
+    const response = await api.getCustomer(userId);
+    
+    if (response.error) {
+      console.error('Error loading customer data:', response.error);
+      toast.error('Failed to load your data');
+      return;
+    }
+
+    if (response.customer) {
+      const customer = response.customer;
+      
+      // Build progress from purchases
+      const progress: { [key: string]: string[] } = {};
+      roadmaps.forEach(roadmap => {
+        progress[roadmap.id] = roadmap.requiredItems.filter(item => 
+          customer.purchases.includes(item)
+        );
+      });
+      
+      setUserProgress(progress);
+      setEarnedBadges(customer.completedRoadmaps || []);
+      setAvailableRewards(customer.badges || []);
+      setPurchaseHistory(customer.purchaseHistory || []);
+    }
+  };
+
+  // Handle view changes
+  useEffect(() => {
+    if (currentView === 'scanner') {
+      setShowScanner(true);
+      setCurrentView('dashboard');
+    } else if (currentView === 'history') {
+      setShowHistory(true);
+      setCurrentView('dashboard');
+    }
+  }, [currentView]);
 
   const calculateProgress = (roadmap: Roadmap) => {
     const purchased = userProgress[roadmap.id] || [];
@@ -108,29 +151,30 @@ export function CustomerDashboard({ userId, userName, onLogout }: CustomerDashbo
     <div className="min-h-screen bg-[#1a2f2a]">
       {/* Header */}
       <header className="bg-gradient-to-br from-[#243832]/80 to-[#1a2f2a]/80 backdrop-blur-xl border-b border-[#a8c5a0]/20 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="container mx-auto px-4 py-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 md:gap-4 min-w-0">
             <img 
               src={logoImage} 
               alt="Epicure Cafe" 
-              className="w-12 h-12 rounded-full"
+              className="w-10 h-10 md:w-12 md:h-12 rounded-full flex-shrink-0"
               style={{ filter: 'brightness(1.2) contrast(1.1)' }}
             />
-            <div>
+            <div className="min-w-0">
               <h1 
-                className="text-2xl text-[#d4e4d0]"
+                className="text-lg md:text-2xl text-[#d4e4d0] truncate"
                 style={{ fontFamily: "'Mr Stalwart', cursive" }}
               >
                 {userName}
               </h1>
-              <p className="text-[#a8c5a0]/70 text-sm">Member Dashboard</p>
+              <p className="text-[#a8c5a0]/70 text-xs md:text-sm hidden sm:block">Member Dashboard</p>
             </div>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2 flex-shrink-0 flex-wrap justify-end">
             <Button
               onClick={() => setCurrentView(currentView === 'dashboard' ? 'menu' : 'dashboard')}
               variant="outline"
-              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 hidden md:flex"
             >
               {currentView === 'dashboard' ? (
                 <>
@@ -145,12 +189,63 @@ export function CustomerDashboard({ userId, userName, onLogout }: CustomerDashbo
               )}
             </Button>
             <Button
+              onClick={() => setCurrentView(currentView === 'dashboard' ? 'menu' : 'dashboard')}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 md:hidden p-2"
+            >
+              {currentView === 'dashboard' ? <Menu className="w-4 h-4" /> : <Home className="w-4 h-4" />}
+            </Button>
+            <Button
+              onClick={() => setCurrentView('scanner')}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 hidden md:flex"
+            >
+              <Scan className="w-4 h-4 mr-2" />
+              Scan Bill
+            </Button>
+            <Button
+              onClick={() => setCurrentView('scanner')}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 md:hidden p-2"
+            >
+              <Scan className="w-4 h-4" />
+            </Button>
+            <Button
+              onClick={() => setCurrentView('history')}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 hidden md:flex"
+            >
+              <History className="w-4 h-4 mr-2" />
+              History
+            </Button>
+            <Button
+              onClick={() => setCurrentView('history')}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 md:hidden p-2"
+            >
+              <History className="w-4 h-4" />
+            </Button>
+            <Button
               onClick={onLogout}
               variant="outline"
-              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 hidden md:flex"
             >
               <LogOut className="w-4 h-4 mr-2" />
               Logout
+            </Button>
+            <Button
+              onClick={onLogout}
+              variant="outline"
+              size="sm"
+              className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10 md:hidden p-2"
+            >
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
@@ -349,6 +444,23 @@ export function CustomerDashboard({ userId, userName, onLogout }: CustomerDashbo
         </>
         )}
       </div>
+
+      {/* Scanner Modal */}
+      {showScanner && (
+        <BillScanner
+          userId={userId}
+          onClose={() => setShowScanner(false)}
+          onSuccess={loadCustomerData}
+        />
+      )}
+
+      {/* History Modal */}
+      {showHistory && (
+        <PurchaseHistory
+          purchaseHistory={purchaseHistory}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

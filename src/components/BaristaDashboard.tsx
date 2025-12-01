@@ -5,6 +5,7 @@ import { Input } from './ui/input';
 import { Search, Check, X, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner@2.0.3';
 import { menuItems } from '../data/menuData';
+import { api } from '../utils/api';
 
 // Logo - Try to import from figma, fallback to public folder for local development
 let logoImage: string;
@@ -55,17 +56,25 @@ export function BaristaDashboard({ onBack }: BaristaDashboardProps) {
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const searchCustomer = () => {
-    if (!phoneNumber) return;
+  const searchCustomer = async () => {
+    if (!phoneNumber || !/^\d{10}$/.test(phoneNumber)) {
+      toast.error('Please enter a valid 10-digit mobile number');
+      return;
+    }
 
-    const userData = localStorage.getItem(`user_${phoneNumber}`);
-    if (userData) {
-      const user = JSON.parse(userData);
-      setCustomerName(user.name);
-      toast.success(`Customer found: ${user.name}`);
-    } else {
+    setLoading(true);
+    const response = await api.searchCustomer(phoneNumber);
+    setLoading(false);
+
+    if (response.error) {
       setCustomerName('');
       toast.error('Customer not found. They may need to register first.');
+      return;
+    }
+
+    if (response.customer) {
+      setCustomerName(response.customer.name);
+      toast.success(`Customer found: ${response.customer.name}`);
     }
   };
 
@@ -77,7 +86,7 @@ export function BaristaDashboard({ onBack }: BaristaDashboardProps) {
     );
   };
 
-  const savePurchase = () => {
+  const savePurchase = async () => {
     if (!phoneNumber || !customerName) {
       toast.error('Please search for a customer first');
       return;
@@ -90,70 +99,51 @@ export function BaristaDashboard({ onBack }: BaristaDashboardProps) {
 
     setLoading(true);
 
-    // Load current progress
-    const progressKey = `progress_${phoneNumber}`;
-    const badgesKey = `badges_${phoneNumber}`;
-    const rewardsKey = `rewards_${phoneNumber}`;
+    // Add purchase via API
+    const response = await api.baristaAddPurchase(phoneNumber, selectedItems);
 
-    const currentProgress = JSON.parse(localStorage.getItem(progressKey) || '{}');
-    const currentBadges = JSON.parse(localStorage.getItem(badgesKey) || '[]');
-    const currentRewards = JSON.parse(localStorage.getItem(rewardsKey) || '[]');
+    if (response.error) {
+      toast.error(`Failed to save purchase: ${response.error}`);
+      setLoading(false);
+      return;
+    }
 
-    // Update progress for each roadmap
-    const newBadges: string[] = [];
-    const newRewards: string[] = [];
-
-    roadmaps.forEach(roadmap => {
-      if (currentBadges.includes(roadmap.id)) {
-        return; // Already completed
-      }
-
-      // Get current progress for this roadmap
-      const roadmapProgress = currentProgress[roadmap.id] || [];
-
-      // Add new items
-      selectedItems.forEach(item => {
-        if (roadmap.requiredItems.includes(item) && !roadmapProgress.includes(item)) {
-          roadmapProgress.push(item);
+    if (response.customer) {
+      const customer = response.customer;
+      
+      // Check for newly completed roadmaps
+      const newlyCompleted: string[] = [];
+      
+      roadmaps.forEach(async (roadmap) => {
+        const hasAllItems = roadmap.requiredItems.every(item => 
+          customer.purchases.includes(item)
+        );
+        
+        const alreadyCompleted = customer.completedRoadmaps?.includes(roadmap.id);
+        
+        if (hasAllItems && !alreadyCompleted) {
+          newlyCompleted.push(roadmap.id);
+          // Mark roadmap as completed
+          await api.completeRoadmap(customer.id, roadmap.id, roadmap.badge);
         }
       });
 
-      // Update progress
-      currentProgress[roadmap.id] = roadmapProgress;
+      setLoading(false);
 
-      // Check if roadmap is completed
-      const isCompleted = roadmap.requiredItems.every(item => 
-        roadmapProgress.includes(item)
-      );
-
-      if (isCompleted) {
-        newBadges.push(roadmap.id);
-        newRewards.push(roadmap.reward);
-        currentBadges.push(roadmap.id);
-        currentRewards.push(roadmap.reward);
+      // Show success message
+      if (newlyCompleted.length > 0) {
+        const badgeNames = newlyCompleted.map(id => {
+          const roadmap = roadmaps.find(r => r.id === id);
+          return roadmap?.badge;
+        }).join(', ');
+        toast.success(`🎉 ${customerName} earned new badge(s): ${badgeNames}!`, { duration: 5000 });
+      } else {
+        toast.success(`Purchase recorded for ${customerName}`);
       }
-    });
 
-    // Save updated data
-    localStorage.setItem(progressKey, JSON.stringify(currentProgress));
-    localStorage.setItem(badgesKey, JSON.stringify(currentBadges));
-    localStorage.setItem(rewardsKey, JSON.stringify(currentRewards));
-
-    setLoading(false);
-
-    // Show success message
-    if (newBadges.length > 0) {
-      const badgeNames = newBadges.map(id => {
-        const roadmap = roadmaps.find(r => r.id === id);
-        return roadmap?.badge;
-      }).join(', ');
-      toast.success(`🎉 ${customerName} earned new badge(s): ${badgeNames}!`);
-    } else {
-      toast.success(`Purchase recorded for ${customerName}`);
+      // Reset
+      setSelectedItems([]);
     }
-
-    // Reset
-    setSelectedItems([]);
   };
 
   const clearAll = () => {
@@ -206,11 +196,12 @@ export function BaristaDashboard({ onBack }: BaristaDashboardProps) {
               <div className="flex-1 relative">
                 <Input
                   type="tel"
-                  placeholder="Enter phone number"
+                  placeholder="10-digit mobile number"
                   value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   onKeyPress={(e) => e.key === 'Enter' && searchCustomer()}
                   className="bg-[#1a2f2a]/50 border-[#a8c5a0]/30 text-[#d4e4d0] placeholder:text-[#a8c5a0]/40 focus:border-[#a8c5a0] h-12"
+                  maxLength={10}
                 />
               </div>
               <Button
