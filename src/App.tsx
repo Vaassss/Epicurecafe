@@ -6,11 +6,12 @@ import { AboutSection } from './components/AboutSection';
 import { LoginPage } from './components/LoginPage';
 import { CustomerDashboard } from './components/CustomerDashboard';
 import { BaristaDashboard } from './components/BaristaDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
 import { Toaster } from './components/ui/sonner';
 import { Users } from 'lucide-react';
 import { logHealthStatus } from './utils/healthCheck';
 
-type Page = 'landing' | 'login' | 'customer' | 'barista';
+type Page = 'landing' | 'login' | 'customer' | 'barista' | 'admin';
 
 // Logo - Try to import from figma, fallback to public folder for local development
 let logoImage: string;
@@ -26,6 +27,8 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [userId, setUserId] = useState<string>('');
   const [userName, setUserName] = useState<string>('');
+  const [userMobile, setUserMobile] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [showHero, setShowHero] = useState(false);
   const mottoRef = useRef<HTMLDivElement>(null);
   
@@ -43,15 +46,19 @@ export default function App() {
     logHealthStatus();
   }, []);
 
-  const handleLoginSuccess = (id: string, name: string) => {
+  const handleLoginSuccess = (id: string, name: string, mobile: string, admin: boolean) => {
     setUserId(id);
     setUserName(name);
-    setCurrentPage('customer');
+    setUserMobile(mobile);
+    setIsAdmin(admin);
+    setCurrentPage(admin ? 'admin' : 'customer');
   };
 
   const handleLogout = () => {
     setUserId('');
     setUserName('');
+    setUserMobile('');
+    setIsAdmin(false);
     setCurrentPage('landing');
   };
 
@@ -62,6 +69,20 @@ export default function App() {
         <LoginPage 
           onBack={() => setCurrentPage('landing')}
           onLoginSuccess={handleLoginSuccess}
+        />
+        <Toaster />
+      </>
+    );
+  }
+
+  if (currentPage === 'admin') {
+    return (
+      <>
+        <AdminDashboard 
+          userId={userId}
+          userName={userName}
+          userMobile={userMobile}
+          onLogout={handleLogout}
         />
         <Toaster />
       </>

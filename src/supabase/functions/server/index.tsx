@@ -20,17 +20,22 @@ app.use(
   }),
 );
 
+// Admin Configuration
+const MASTER_ADMIN_MOBILE = "9999999999"; // Change this to the owner's phone number
+const MANUAL_ENTRY_CODE = "CAFE2024"; // Staff code for manual entry - store securely
+
 // Types
 interface CustomerData {
   id: string;
   name: string;
   mobile: string;
   purchases: string[];
-  purchaseHistory: PurchaseRecord[]; // New: detailed purchase history
+  purchaseHistory: PurchaseRecord[];
   completedRoadmaps: string[];
   badges: string[];
   createdAt: string;
   lastPurchaseAt?: string;
+  isAdmin?: boolean; // New: track admin users
 }
 
 interface PurchaseRecord {
@@ -39,12 +44,19 @@ interface PurchaseRecord {
   timestamp: string;
   source: 'scanner' | 'barista' | 'manual';
   billId?: string;
+  billHash?: string; // New: to prevent duplicate scanning
 }
 
 interface OTPData {
   mobile: string;
   otp: string;
   expiresAt: number;
+}
+
+interface ScannedBill {
+  billHash: string;
+  customerId: string;
+  scannedAt: string;
 }
 
 // Utility Functions
@@ -134,19 +146,35 @@ app.post("/make-server-6a458d4b/verify-otp", async (c) => {
 
       // Create new customer
       const customerId = generateCustomerId();
+      const isAdmin = mobile === MASTER_ADMIN_MOBILE;
+      
       customer = {
         id: customerId,
         name: name.trim(),
         mobile,
         purchases: [],
-        purchaseHistory: [], // Initialize purchase history
+        purchaseHistory: [],
         completedRoadmaps: [],
         badges: [],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        isAdmin: isAdmin
       };
+
+      // If this is the master admin, add to admin list
+      if (isAdmin) {
+        await kv.set(`admin:${mobile}`, { mobile, addedAt: new Date().toISOString() });
+      }
 
       await kv.set(`customer:${customerId}`, customer);
       await kv.set(`customer:mobile:${mobile}`, customer);
+    } else {
+      // Check if this mobile is an admin
+      const adminRecord = await kv.get(`admin:${mobile}`);
+      if (adminRecord && !customer.isAdmin) {
+        customer.isAdmin = true;
+        await kv.set(`customer:${customer.id}`, customer);
+        await kv.set(`customer:mobile:${mobile}`, customer);
+      }
     }
 
     // OTP verified successfully - now delete it
@@ -157,7 +185,8 @@ app.post("/make-server-6a458d4b/verify-otp", async (c) => {
       customer: {
         id: customer.id,
         name: customer.name,
-        mobile: customer.mobile
+        mobile: customer.mobile,
+        isAdmin: customer.isAdmin || false
       }
     });
   } catch (error) {
@@ -355,11 +384,190 @@ app.get("/make-server-6a458d4b/check-customer/:mobile", async (c) => {
   }
 });
 
+// Verify staff code
+app.post("/make-server-6a458d4b/verify-staff-code", async (c) => {
+  try {
+    const { code } = await c.req.json();
+    
+    if (code === MANUAL_ENTRY_CODE) {
+      return c.json({ valid: true });
+    }
+    
+    return c.json({ valid: false }, 403);
+  } catch (error) {
+    console.error("Error verifying staff code:", error);
+    return c.json({ error: "Failed to verify code" }, 500);
+  }
+});
+
+// Admin Routes - Get all customers
+app.get("/make-server-6a458d4b/admin/customers", async (c) => {
+  try {
+    const adminMobile = c.req.header("X-Admin-Mobile");
+    
+    // Verify admin
+    const admin = await kv.get<CustomerData>(`customer:mobile:${adminMobile}`);
+    if (!admin || !admin.isAdmin) {
+      return c.json({ error: "Unauthorized. Admin access required." }, 403);
+    }
+
+    // Get all customers
+    const customers = await kv.getByPrefix<CustomerData>("customer:mobile:");
+    
+    return c.json({ customers: customers || [] });
+  } catch (error) {
+    console.error("Error fetching all customers:", error);
+    return c.json({ error: "Failed to fetch customers" }, 500);
+  }
+});
+
+// Admin - Add/Remove purchases for any customer
+app.post("/make-server-6a458d4b/admin/customer/:mobile/purchase", async (c) => {
+  try {
+    const adminMobile = c.req.header("X-Admin-Mobile");
+    const targetMobile = c.req.param("mobile");
+    const { items, action } = await c.req.json(); // action: 'add' or 'remove'
+    
+    // Verify admin
+    const admin = await kv.get<CustomerData>(`customer:mobile:${adminMobile}`);
+    if (!admin || !admin.isAdmin) {
+      return c.json({ error: "Unauthorized. Admin access required." }, 403);
+    }
+
+    const customer = await kv.get<CustomerData>(`customer:mobile:${targetMobile}`);
+    if (!customer) {
+      return c.json({ error: "Customer not found" }, 404);
+    }
+
+    if (!customer.purchaseHistory) {
+      customer.purchaseHistory = [];
+    }
+
+    if (action === 'add') {
+      // Add items
+      customer.purchases.push(...items);
+      customer.lastPurchaseAt = new Date().toISOString();
+      
+      const purchaseId = generatePurchaseId();
+      const purchaseRecord: PurchaseRecord = {
+        id: purchaseId,
+        items: items,
+        timestamp: new Date().toISOString(),
+        source: 'barista'
+      };
+      customer.purchaseHistory.push(purchaseRecord);
+    } else if (action === 'remove') {
+      // Remove purchase record by ID
+      const { purchaseId } = await c.req.json();
+      customer.purchaseHistory = customer.purchaseHistory.filter(p => p.id !== purchaseId);
+      
+      // Rebuild purchases list from history
+      customer.purchases = [];
+      customer.purchaseHistory.forEach(record => {
+        customer.purchases.push(...record.items);
+      });
+    }
+
+    await kv.set(`customer:${customer.id}`, customer);
+    await kv.set(`customer:mobile:${targetMobile}`, customer);
+
+    return c.json({ success: true, customer });
+  } catch (error) {
+    console.error("Error managing customer purchase:", error);
+    return c.json({ error: "Failed to manage purchase" }, 500);
+  }
+});
+
+// Admin - Add admin user
+app.post("/make-server-6a458d4b/admin/add-admin", async (c) => {
+  try {
+    const adminMobile = c.req.header("X-Admin-Mobile");
+    const { mobile } = await c.req.json();
+    
+    // Verify admin
+    const admin = await kv.get<CustomerData>(`customer:mobile:${adminMobile}`);
+    if (!admin || !admin.isAdmin) {
+      return c.json({ error: "Unauthorized. Admin access required." }, 403);
+    }
+
+    // Add to admin list
+    await kv.set(`admin:${mobile}`, { mobile, addedAt: new Date().toISOString(), addedBy: adminMobile });
+    
+    // Update customer record if exists
+    const customer = await kv.get<CustomerData>(`customer:mobile:${mobile}`);
+    if (customer) {
+      customer.isAdmin = true;
+      await kv.set(`customer:${customer.id}`, customer);
+      await kv.set(`customer:mobile:${mobile}`, customer);
+    }
+
+    return c.json({ success: true, message: "Admin added successfully" });
+  } catch (error) {
+    console.error("Error adding admin:", error);
+    return c.json({ error: "Failed to add admin" }, 500);
+  }
+});
+
+// Admin - Remove admin user
+app.post("/make-server-6a458d4b/admin/remove-admin", async (c) => {
+  try {
+    const adminMobile = c.req.header("X-Admin-Mobile");
+    const { mobile } = await c.req.json();
+    
+    // Verify admin
+    const admin = await kv.get<CustomerData>(`customer:mobile:${adminMobile}`);
+    if (!admin || !admin.isAdmin) {
+      return c.json({ error: "Unauthorized. Admin access required." }, 403);
+    }
+
+    // Cannot remove master admin
+    if (mobile === MASTER_ADMIN_MOBILE) {
+      return c.json({ error: "Cannot remove master admin" }, 403);
+    }
+
+    // Remove from admin list
+    await kv.del(`admin:${mobile}`);
+    
+    // Update customer record if exists
+    const customer = await kv.get<CustomerData>(`customer:mobile:${mobile}`);
+    if (customer) {
+      customer.isAdmin = false;
+      await kv.set(`customer:${customer.id}`, customer);
+      await kv.set(`customer:mobile:${mobile}`, customer);
+    }
+
+    return c.json({ success: true, message: "Admin removed successfully" });
+  } catch (error) {
+    console.error("Error removing admin:", error);
+    return c.json({ error: "Failed to remove admin" }, 500);
+  }
+});
+
+// Admin - Get all admins
+app.get("/make-server-6a458d4b/admin/list-admins", async (c) => {
+  try {
+    const adminMobile = c.req.header("X-Admin-Mobile");
+    
+    // Verify admin
+    const admin = await kv.get<CustomerData>(`customer:mobile:${adminMobile}`);
+    if (!admin || !admin.isAdmin) {
+      return c.json({ error: "Unauthorized. Admin access required." }, 403);
+    }
+
+    const admins = await kv.getByPrefix("admin:");
+    
+    return c.json({ admins: admins || [] });
+  } catch (error) {
+    console.error("Error fetching admins:", error);
+    return c.json({ error: "Failed to fetch admins" }, 500);
+  }
+});
+
 // Process scanned bill
 app.post("/make-server-6a458d4b/customer/:id/scan-bill", async (c) => {
   try {
     const customerId = c.req.param("id");
-    const { scannedText, items } = await c.req.json();
+    const { scannedText, items, billHash, staffCode } = await c.req.json();
 
     if (!Array.isArray(items) || items.length === 0) {
       return c.json({ error: "Items array is required" }, 400);
@@ -371,9 +579,30 @@ app.post("/make-server-6a458d4b/customer/:id/scan-bill", async (c) => {
       return c.json({ error: "Customer not found" }, 404);
     }
 
+    // Check if bill was already scanned (prevent duplicates)
+    if (billHash) {
+      const existingBill = await kv.get<ScannedBill>(`bill:${billHash}`);
+      if (existingBill) {
+        return c.json({ 
+          error: "This bill has already been scanned", 
+          isDuplicate: true 
+        }, 400);
+      }
+    }
+
     // Ensure purchaseHistory exists (for backward compatibility)
     if (!customer.purchaseHistory) {
       customer.purchaseHistory = [];
+    }
+
+    // Determine source - check if staff code was provided for manual entry
+    let source: 'scanner' | 'barista' | 'manual' = 'scanner';
+    if (staffCode) {
+      // Validate staff code for manual entry
+      if (staffCode !== MANUAL_ENTRY_CODE) {
+        return c.json({ error: "Invalid staff code" }, 403);
+      }
+      source = 'manual';
     }
 
     // Add purchases to main list
@@ -382,14 +611,26 @@ app.post("/make-server-6a458d4b/customer/:id/scan-bill", async (c) => {
 
     // Add detailed purchase record
     const purchaseId = generatePurchaseId();
+    const billId = `bill_${Date.now()}`;
     const purchaseRecord: PurchaseRecord = {
       id: purchaseId,
       items: items,
       timestamp: new Date().toISOString(),
-      source: 'scanner',
-      billId: `bill_${Date.now()}`
+      source: source,
+      billId: billId,
+      billHash: billHash
     };
     customer.purchaseHistory.push(purchaseRecord);
+
+    // Store bill hash to prevent duplicate scanning
+    if (billHash) {
+      const scannedBill: ScannedBill = {
+        billHash: billHash,
+        customerId: customerId,
+        scannedAt: new Date().toISOString()
+      };
+      await kv.set(`bill:${billHash}`, scannedBill);
+    }
 
     // Save updated customer
     await kv.set(`customer:${customerId}`, customer);

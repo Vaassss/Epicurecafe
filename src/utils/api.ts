@@ -102,10 +102,77 @@ export const api = {
   },
 
   // Scan bill
-  scanBill: (customerId: string, items: string[], scannedText?: string) => {
+  scanBill: (customerId: string, items: string[], scannedText?: string, billHash?: string, staffCode?: string) => {
     return apiRequest(`/customer/${customerId}/scan-bill`, {
       method: 'POST',
-      body: JSON.stringify({ items, scannedText }),
+      body: JSON.stringify({ items, scannedText, billHash, staffCode }),
     });
+  },
+
+  // Verify staff code
+  verifyStaffCode: (code: string) => {
+    return apiRequest('/verify-staff-code', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    });
+  },
+
+  // Admin endpoints
+  admin: {
+    getAllCustomers: (adminMobile: string) => {
+      return apiRequest('/admin/customers', {
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+      });
+    },
+
+    addPurchase: (adminMobile: string, customerMobile: string, items: string[]) => {
+      return apiRequest(`/admin/customer/${customerMobile}/purchase`, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+        body: JSON.stringify({ items, action: 'add' }),
+      });
+    },
+
+    removePurchase: (adminMobile: string, customerMobile: string, purchaseId: string) => {
+      return apiRequest(`/admin/customer/${customerMobile}/purchase`, {
+        method: 'POST',
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+        body: JSON.stringify({ purchaseId, action: 'remove' }),
+      });
+    },
+
+    addAdmin: (adminMobile: string, newAdminMobile: string) => {
+      return apiRequest('/admin/add-admin', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+        body: JSON.stringify({ mobile: newAdminMobile }),
+      });
+    },
+
+    removeAdmin: (adminMobile: string, targetMobile: string) => {
+      return apiRequest('/admin/remove-admin', {
+        method: 'POST',
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+        body: JSON.stringify({ mobile: targetMobile }),
+      });
+    },
+
+    getAdmins: (adminMobile: string) => {
+      return apiRequest('/admin/list-admins', {
+        headers: {
+          'X-Admin-Mobile': adminMobile,
+        },
+      });
+    },
   },
 };

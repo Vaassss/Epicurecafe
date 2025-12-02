@@ -18,7 +18,7 @@ try {
 
 interface LoginPageProps {
   onBack: () => void;
-  onLoginSuccess: (userId: string, userName: string) => void;
+  onLoginSuccess: (userId: string, userName: string, userMobile: string, isAdmin: boolean) => void;
 }
 
 export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
@@ -113,8 +113,20 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
 
     if (response.customer) {
       console.log('[Login] Successfully logged in customer:', response.customer.name);
-      toast.success(`Welcome back, ${response.customer.name}!`);
-      onLoginSuccess(response.customer.id, response.customer.name);
+      const isAdmin = (response.customer as any).isAdmin || false;
+      
+      if (isAdmin) {
+        toast.success(`Welcome, Admin ${response.customer.name}!`);
+      } else {
+        toast.success(`Welcome back, ${response.customer.name}!`);
+      }
+      
+      onLoginSuccess(
+        response.customer.id, 
+        response.customer.name, 
+        response.customer.mobile,
+        isAdmin
+      );
     } else {
       setError('Invalid response from server');
     }
@@ -142,8 +154,20 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
     }
 
     if (response.customer) {
-      toast.success(`Welcome to Epicure Cafe, ${response.customer.name}!`);
-      onLoginSuccess(response.customer.id, response.customer.name);
+      const isAdmin = (response.customer as any).isAdmin || false;
+      
+      if (isAdmin) {
+        toast.success(`Welcome, Admin ${response.customer.name}!`);
+      } else {
+        toast.success(`Welcome to Epicure Cafe, ${response.customer.name}!`);
+      }
+      
+      onLoginSuccess(
+        response.customer.id, 
+        response.customer.name,
+        response.customer.mobile,
+        isAdmin
+      );
     } else {
       setError('Invalid response from server');
     }

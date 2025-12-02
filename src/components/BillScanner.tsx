@@ -20,16 +20,34 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
   const [detectedItems, setDetectedItems] = useState<string[]>([]);
   const [manualItems, setManualItems] = useState<string[]>([]);
   const [showManualSelect, setShowManualSelect] = useState(false);
+  const [showStaffCodeInput, setShowStaffCodeInput] = useState(false);
+  const [staffCode, setStaffCode] = useState('');
+  const [billHash, setBillHash] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageSelect = async (file: File) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setSelectedImage(e.target?.result as string);
+    reader.onload = async (e) => {
+      const dataUrl = e.target?.result as string;
+      setSelectedImage(dataUrl);
+      
+      // Generate hash for duplicate detection
+      const hash = await generateImageHash(dataUrl);
+      setBillHash(hash);
+      
       processImage(file);
     };
     reader.readAsDataURL(file);
+  };
+
+  const generateImageHash = async (dataUrl: string): Promise<string> => {
+    // Simple hash based on data URL (in production, use a proper hash like SHA-256)
+    const encoder = new TextEncoder();
+    const data = encoder.encode(dataUrl.substring(0, 1000)); // Sample first 1000 chars
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   };
 
   const processImage = async (file: File) => {
@@ -107,6 +125,27 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
     setDetectedItems(detectedItems.filter(item => item !== itemName));
   };
 
+  const handleManualEntryClick = () => {
+    setShowStaffCodeInput(true);
+  };
+
+  const handleStaffCodeSubmit = async () => {
+    if (!staffCode) {
+      toast.error('Please enter staff code');
+      return;
+    }
+
+    const response = await api.verifyStaffCode(staffCode);
+    if (response.valid) {
+      setShowStaffCodeInput(false);
+      setShowManualSelect(true);
+      toast.success('Staff code verified!');
+    } else {
+      toast.error('Invalid staff code. Only cafe staff can manually add items.');
+      setStaffCode('');
+    }
+  };
+
   const handleSubmit = async () => {
     const allItems = [...detectedItems, ...manualItems];
     
@@ -116,11 +155,21 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
     }
 
     setIsProcessing(true);
-    const response = await api.scanBill(userId, allItems, scannedText);
+    const response = await api.scanBill(
+      userId, 
+      allItems, 
+      scannedText, 
+      billHash,
+      manualItems.length > 0 ? staffCode : undefined
+    );
     setIsProcessing(false);
 
     if (response.error) {
-      toast.error(response.error);
+      if ((response as any).isDuplicate) {
+        toast.error('This bill has already been scanned!');
+      } else {
+        toast.error(response.error);
+      }
       return;
     }
 
@@ -201,12 +250,52 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
             
             <div className="text-center">
               <Button
-                onClick={() => setShowManualSelect(true)}
+                onClick={handleManualEntryClick}
                 variant="outline"
                 className="border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10"
               >
-                Or Add Items Manually
+                Or Add Items Manually (Staff Only)
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Staff Code Input */}
+        {showStaffCodeInput && (
+          <div className="mb-6">
+            <h3 className="text-xl text-[#d4e4d0] mb-3">Staff Verification</h3>
+            <p className="text-[#a8c5a0]/70 text-sm mb-4">
+              Manual entry requires a staff code. Please enter your code to continue.
+            </p>
+            <div className="space-y-4">
+              <input
+                type="password"
+                placeholder="Enter Staff Code"
+                value={staffCode}
+                onChange={(e) => setStaffCode(e.target.value.toUpperCase())}
+                className="w-full bg-[#1a2f2a]/50 border border-[#a8c5a0]/30 rounded-xl p-4 text-[#d4e4d0] placeholder:text-[#a8c5a0]/40 focus:border-[#a8c5a0] focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleStaffCodeSubmit();
+                }}
+              />
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowStaffCodeInput(false);
+                    setStaffCode('');
+                  }}
+                  variant="outline"
+                  className="flex-1 border-[#a8c5a0]/30 text-[#a8c5a0] hover:bg-[#a8c5a0]/10"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleStaffCodeSubmit}
+                  className="flex-1 bg-gradient-to-r from-[#a8c5a0] to-[#8fb088] text-[#1a2f2a] hover:shadow-lg hover:shadow-[#a8c5a0]/50"
+                >
+                  Verify
+                </Button>
+              </div>
             </div>
           </div>
         )}
