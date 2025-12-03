@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
 import { Camera, Upload, X, CheckCircle, Loader2, Plus, Trash2 } from 'lucide-react';
 import { api } from '../utils/api';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { menuItems } from '../data/menuData';
 import { createWorker } from 'tesseract.js';
 

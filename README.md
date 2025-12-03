@@ -1,11 +1,24 @@
 
   # Cafe Loyalty Program Website
 
-  This is a code bundle for Cafe Loyalty Program Website. The original project is available at https://www.figma.com/design/2jn3V45bdXQmMjvBgCL2PD/Cafe-Loyalty-Program-Website.
+Production-ready Vite + React app using SWC. Built output is in dist. Use Node 18+ locally for maximum compatibility.
 
-  ## Running the code
+## Scripts
+- dev: vite
+- build: vite build
 
-  Run `npm i` to install the dependencies.
+## Local Setup
+1. npm install
+2. npm run dev
+3. npm run build
 
-  Run `npm run dev` to start the development server.
+## Deploy to Vercel
+- vercel.json is configured to use @vercel/static-build with distDir set to "dist".
+- In Vercel project settings:
+  - Framework: Other
+  - Build Command: npm run build
+  - Output Directory: dist
+
+## Static hosting
+Serve the dist directory with any static host.
   

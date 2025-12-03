@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Search, Check, X, ArrowLeft } from 'lucide-react';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { menuItems } from '../data/menuData';
 import { api } from '../utils/api';
 

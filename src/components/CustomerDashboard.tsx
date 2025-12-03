@@ -6,7 +6,7 @@ import { MenuSection } from './MenuSection';
 import { BillScanner } from './BillScanner';
 import { PurchaseHistory } from './PurchaseHistory';
 import { api } from '../utils/api';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 
 // Logo - Try to import from figma, fallback to public folder for local development
 let logoImage: string;

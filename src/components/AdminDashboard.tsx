@@ -7,7 +7,7 @@ import {
   Search, X, Calendar, Award, Menu as MenuIcon, Edit2, Save, Loader2
 } from 'lucide-react';
 import { api } from '../utils/api';
-import { toast } from 'sonner@2.0.3';
+import { toast } from 'sonner';
 import { menuItems as initialMenuItems } from '../data/menuData';
 
 // Logo
