@@ -6,11 +6,17 @@ import { MenuSection } from './MenuSection';
 import { BillScanner } from './BillScanner';
 import { PurchaseHistory } from './PurchaseHistory';
 import { api } from '../utils/api';
-import { logger } from '../utils/logger';
 import { toast } from 'sonner@2.0.3';
 
-// Logo path - using PNG
-const logoImage = '/epicure-logo.png';
+// Logo - Try to import from figma, fallback to public folder for local development
+let logoImage: string;
+try {
+  // @ts-ignore - This works in Figma Make environment
+  logoImage = require('figma:asset/762ed7196ef3144613d2ad9faab91ae5aa71f45d.png').default;
+} catch {
+  // Fallback for local development - logo should be in /public folder
+  logoImage = '/epicure-logo.png';
+}
 
 interface CustomerDashboardProps {
   userId: string;

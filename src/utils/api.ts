@@ -1,5 +1,4 @@
 import { projectId, publicAnonKey } from './supabase/info';
-import { logger } from './logger';
 
 const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-6a458d4b`;
 
@@ -12,67 +11,40 @@ interface ApiResponse<T> {
   otp?: string;
 }
 
-// Request deduplication cache
-const requestCache = new Map<string, Promise<any>>();
-const CACHE_TTL = 1000; // 1 second - prevent duplicate requests
-
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {},
-  skipCache = false
+  options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
   try {
-    // Create a cache key based on endpoint and method
-    const cacheKey = `${options.method || 'GET'}_${endpoint}_${JSON.stringify(options.body || '')}`;
+    console.log(`[API] Calling ${endpoint}`, options.method || 'GET');
     
-    // Return cached promise if request is already in-flight (unless explicitly skipped)
-    if (!skipCache && requestCache.has(cacheKey)) {
-      logger.api.request(endpoint, `${options.method || 'GET'} (CACHED)`);
-      return requestCache.get(cacheKey);
-    }
-    
-    logger.api.request(endpoint, options.method || 'GET');
-    
-    const requestPromise = (async () => {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`,
-          ...options.headers,
-        },
-      });
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${publicAnonKey}`,
+        ...options.headers,
+      },
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (!response.ok) {
-        // Special case: "Name required" for new users is not really an error
-        if (data.isNewUser) {
-          logger.info('[API] New user detected, name required for registration');
-          return { error: data.error || `Request failed with status ${response.status}`, ...data };
-        }
-        
-        logger.api.error(endpoint, data.error || 'Unknown error');
+    if (!response.ok) {
+      // Special case: "Name required" for new users is not really an error
+      if (data.isNewUser) {
+        console.log('[API] New user detected, name required for registration');
         return { error: data.error || `Request failed with status ${response.status}`, ...data };
       }
-
-      logger.api.success(endpoint, data);
-      return data;
-    })();
-
-    // Cache the promise
-    if (!skipCache) {
-      requestCache.set(cacheKey, requestPromise);
       
-      // Clear cache after TTL
-      setTimeout(() => {
-        requestCache.delete(cacheKey);
-      }, CACHE_TTL);
+      console.error(`[API Error] ${endpoint} (${response.status}):`, data.error || 'Unknown error');
+      console.log('[API Error Response Full]:', data); // Debug: see full response
+      return { error: data.error || `Request failed with status ${response.status}`, ...data };
     }
 
-    return await requestPromise;
+    console.log(`[API Success] ${endpoint}`, data);
+    return data;
   } catch (error) {
-    logger.api.error(endpoint, error);
+    console.error(`[Network Error] ${endpoint}:`, error);
     return { error: 'Network error. Please check your connection and try again.' };
   }
 }

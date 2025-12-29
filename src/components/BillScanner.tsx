@@ -5,7 +5,7 @@ import { Camera, Upload, X, CheckCircle, Loader2, Plus, Trash2 } from 'lucide-re
 import { api } from '../utils/api';
 import { toast } from 'sonner@2.0.3';
 import { menuItems } from '../data/menuData';
-import { createWorker, Worker } from 'tesseract.js';
+import { createWorker } from 'tesseract.js';
 
 interface BillScannerProps {
   userId: string;
@@ -26,17 +26,6 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
   const [invoiceNumber, setInvoiceNumber] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const workerRef = useRef<Worker | null>(null);
-
-  // Cleanup Tesseract worker on unmount
-  useEffect(() => {
-    return () => {
-      if (workerRef.current) {
-        workerRef.current.terminate();
-        workerRef.current = null;
-      }
-    };
-  }, []);
 
   const handleImageSelect = async (file: File) => {
     const reader = new FileReader();
@@ -65,15 +54,10 @@ export function BillScanner({ userId, onClose, onSuccess }: BillScannerProps) {
   const processImage = async (file: File) => {
     setIsProcessing(true);
     try {
-      // Create and cache worker for reuse
-      if (!workerRef.current) {
-        workerRef.current = await createWorker('eng', 1, {
-          // Optimize Tesseract.js settings for better performance
-          logger: () => {}, // Disable verbose logging in production
-        });
-      }
-      
-      const { data: { text } } = await workerRef.current.recognize(file);
+      // Use Tesseract.js for OCR
+      const worker = await createWorker('eng');
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
 
       setScannedText(text);
       

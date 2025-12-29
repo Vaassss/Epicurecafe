@@ -10,8 +10,14 @@ import { api } from '../utils/api';
 import { toast } from 'sonner@2.0.3';
 import { menuItems as initialMenuItems } from '../data/menuData';
 
-// Logo path - using PNG
-const logoImage = '/epicure-logo.png';
+// Logo
+let logoImage: string;
+try {
+  // @ts-ignore
+  logoImage = require('figma:asset/762ed7196ef3144613d2ad9faab91ae5aa71f45d.png').default;
+} catch {
+  logoImage = '/epicure-logo.png';
+}
 
 interface AdminDashboardProps {
   userId: string;

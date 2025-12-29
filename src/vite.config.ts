@@ -10,13 +10,14 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir: 'dist', // Explicitly set output to dist for Vercel
+    emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          motion: ['motion'],
+          motion: ['motion/react'],
         },
       },
     },

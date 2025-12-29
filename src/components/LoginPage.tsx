@@ -4,11 +4,17 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Phone, KeyRound, ArrowLeft } from 'lucide-react';
 import { api } from '../utils/api';
-import { logger } from '../utils/logger';
 import { toast } from 'sonner@2.0.3';
 
-// Logo path - using PNG
-const logoImage = '/epicure-logo.png';
+// Logo - Try to import from figma, fallback to public folder for local development
+let logoImage: string;
+try {
+  // @ts-ignore - This works in Figma Make environment
+  logoImage = require('figma:asset/762ed7196ef3144613d2ad9faab91ae5aa71f45d.png').default;
+} catch {
+  // Fallback for local development - logo should be in /public folder
+  logoImage = '/epicure-logo.png';
+}
 
 interface LoginPageProps {
   onBack: () => void;
@@ -37,7 +43,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
     // First check if customer exists
     const checkResponse = await api.checkCustomer(phoneNumber);
     if (checkResponse.error) {
-      logger.warn('Could not check customer status, proceeding anyway');
+      console.warn('Could not check customer status, proceeding anyway');
     } else {
       setIsNewUser(checkResponse.isNewUser || false);
     }
@@ -73,20 +79,20 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
       return;
     }
 
-    logger.log('[Login] Verifying OTP for mobile:', phoneNumber);
+    console.log('[Login] Verifying OTP for mobile:', phoneNumber);
     
     // Try to verify OTP (works for both existing and new users)
     const response = await api.verifyOTP(phoneNumber, otp);
     
-    logger.log('[Login] Verify OTP response:', response);
-    logger.log('[Login] isNewUser flag:', (response as any).isNewUser);
+    console.log('[Login] Verify OTP response:', response);
+    console.log('[Login] isNewUser flag:', (response as any).isNewUser);
     
     // Check if this is a new user who needs to provide name
     // The server returns isNewUser flag along with the error
     const isNewUserFlag = (response as any).isNewUser;
     
     if (isNewUserFlag) {
-      logger.log('[Login] ✅ New user detected, transitioning to registration step');
+      console.log('[Login] ✅ New user detected, transitioning to registration step');
       setLoading(false);
       setStep('register');
       setError(''); // Clear any error
@@ -97,7 +103,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
     }
     
     if (response.error) {
-      logger.log('[Login] Error not related to new user:', response.error);
+      console.log('[Login] Error not related to new user:', response.error);
       
       // Other errors (wrong OTP, expired, etc.)
       setError(response.error);
@@ -106,7 +112,7 @@ export function LoginPage({ onBack, onLoginSuccess }: LoginPageProps) {
     }
 
     if (response.customer) {
-      logger.log('[Login] Successfully logged in customer:', response.customer.name);
+      console.log('[Login] Successfully logged in customer:', response.customer.name);
       const isAdmin = (response.customer as any).isAdmin || false;
       
       if (isAdmin) {
